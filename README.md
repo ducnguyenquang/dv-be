@@ -1,2 +1,2 @@
-# dv-be
-Dai viet website - back end
+# jwt-project
+A demo for an article written about JWT authentication
