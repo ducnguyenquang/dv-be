@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   token: { type: String },
   role: { type: String, require },
   phone: { type: Number, default: null },
+  images: { type: Array, default: [] },
   createdAt: {type: Date, default: Date.now},
   updatedAt: {type: Date, default: Date.now},
 });
