@@ -587,7 +587,7 @@ app.get("/category/remove/:id", auth, async (req, res) => {
   }
 });
 //=== Product ===
-app.post("/product/list", auth, async (req, res) => {
+app.post("/product/list", async (req, res) => {
   res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
@@ -1041,7 +1041,7 @@ app.get("/orderItem/remove/:id", auth, async (req, res) => {
 });
 
 //=== Brand ===
-app.post("/brand/list", auth, async (req, res) => {
+app.post("/brand/list", async (req, res) => {
   res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
@@ -1472,7 +1472,7 @@ app.get("/popup-menu/remove/:id", auth, async (req, res) => {
 });
 
 //=== Tag-seo ===
-app.post("/tag-seo/list", auth, async (req, res) => {
+app.post("/tag-seo/list", async (req, res) => {
   res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
