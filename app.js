@@ -645,7 +645,7 @@ app.post("/product/list", async (req, res) => {
 });
 
 // app.get("/product/:category/:id", auth, async (req, res) => {
-app.get("/product/:id", auth, async (req, res) => {
+app.get("/product/:id", async (req, res) => {
   res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
