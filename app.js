@@ -17,7 +17,8 @@ const EmailTemplate = require("./model/email_template");
 const PopupMenu = require("./model/popup_menu");
 const TagSeo = require("./model/tag_seo");
 const Support = require("./model/support");
-
+// const escapeStringRegexp = require('escape-string-regexp');
+const ObjectId = require("mongoose").Types.ObjectId;
 
 const multer = require("multer");
 const domainsFromEnv = process.env.CORS_DOMAINS || "";
@@ -62,7 +63,8 @@ function sendEmail(emailTemplate, sendTo) {
   });
 
   const mailOptions = {
-    from: SENDER,
+    // from: SENDER,
+    from: "capdaiviet@gmail.com",
     to: sendTo,
     subject: emailTemplate?.title,
     text: emailTemplate?.content,
@@ -84,6 +86,22 @@ const corsOptions = {
   origin: function (origin, callback) {
     // console.log("==== origin", origin);
     // console.log("==== whitelist", whitelist);
+
+    const whitelist = [
+      "http://localhost:4001",
+      "http://localhost:8080",
+      "http://localhost:3000",
+      "http://127.0.0.1:8080",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:4001",
+      "http://103.15.51.185",
+      "http://103.15.51.185:8080",
+      "http://103.15.51.185:4001",
+      "https://leddaiviet.com",
+      "https://leddaiviet.com:8080",
+      "https://leddaiviet.com:4001",
+      "chrome-extension://fhbjgbiflinjbdggehcddcbncdddomop",
+    ];
 
     if (!origin || whitelist.indexOf(origin) !== -1) {
       callback(null, true);
@@ -158,10 +176,10 @@ const upload = multer({ dest: "uploads/" });
 app.post("/register", async (req, res) => {
   try {
     // Get user input
-    const { first_name, last_name, email, password, role } = req.body;
+    const { firstName, lastName, email, phone } = req.body;
 
     // Validate user input
-    if (!(email && password && first_name && last_name)) {
+    if (!(email && firstName && lastName)) {
       res.status(400).send("All input is required");
     }
 
@@ -173,42 +191,49 @@ app.post("/register", async (req, res) => {
       return res.status(409).send("User Already Exist. Please Login");
     }
 
+    const randomPassword = crypto.randomBytes(5).toString("hex");
+
     //Encrypt user password
-    encryptedPassword = await bcrypt.hash(password, 10);
+    encryptedPassword = await bcrypt.hash(randomPassword, 10);
 
     // Create user in our database
-    const user = await User.create({
-      firstName,
-      lastName,
+    let user = await User.create({
+      ...req.body,
       email: email.toLowerCase(), // sanitize: convert email to lowercase
       password: encryptedPassword,
-      role,
+      status: "NEW",
     });
 
-    // Create token
-    const token = jwt.sign(
-      { user_id: user._id, email },
-      process.env.TOKEN_KEY,
+    if (user.status === "CHANGED_PASSWORD") {
+      // Create token
+      const token = jwt.sign(
+        { user_id: user._id, email },
+        process.env.TOKEN_KEY,
+        {
+          expiresIn: "2h",
+        }
+      );
+      // save user token
+      user.token = token;
+    }
+    user.password = undefined;
+
+    sendEmail(
       {
-        expiresIn: "2h",
-      }
+        title: "[leddaiviet.com] Đăng ký tài khoản thành công",
+        content: `Đây là mật khẩu đăng nhập của bạn [ ${randomPassword} ]`,
+      },
+      user.email
     );
-    // save user token
-    user.token = token;
 
     // return new user
-    res.status(201).json(user);
+    res.status(200).json(user);
   } catch (err) {
     console.log(err);
   }
 });
 
 app.post("/login", async (req, res) => {
-  // res.header("Access-Control-Allow-Origin", "*");
-  console.log("==== /login");
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
-  // res.header('Access-Control-Allow-Origin', '*');
-  // res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
   try {
     // Get user input
     const { email, password } = req.body;
@@ -218,12 +243,61 @@ app.post("/login", async (req, res) => {
       res.status(400).send("All input is required");
     }
     // Validate if user exist in our database
-    const user = await User.findOne({ email });
-    console.log('==== email', email)
-    console.log('==== password', password)
-    console.log('==== user', user)
+    let user = await User.findOne({ email });
 
     if (user && (await bcrypt.compare(password, user.password))) {
+      // const result = { ...user }
+      if (user.status === "CHANGED_PASSWORD") {
+        // Create token
+        const token = jwt.sign(
+          { user_id: user._id, email },
+          process.env.TOKEN_KEY,
+          {
+            expiresIn: "2h",
+          }
+        );
+
+        // save user token
+        user.token = token;
+      } else {
+        //Encrypt user password
+        // const temporaryPassword = await bcrypt.hash(password, 10);
+        user.temporaryToken = user.password;
+      }
+      user.password = undefined;
+      console.log('==== /login result', user)
+      res.status(200).json(user);
+    }
+    res.status(400).send("Tài khoản không tồn tại");
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+app.post("/changePassword", async (req, res) => {
+  try {
+    // Get user input
+    const { email, password, oldPassword } = req.body;
+
+    // Validate user input
+    if (!(email && password)) {
+      res.status(400).send("All input is required");
+    }
+    // Validate if user exist in our database
+    const user = await User.findOne({ email });
+    // console.log("==== email", email);
+    // console.log("==== password", password);
+    // console.log("==== user", user);
+    
+    if (user && oldPassword === user.password) {
+      //Encrypt user password
+      const encryptedPassword = await bcrypt.hash(password, 10);
+
+      await User.findByIdAndUpdate(user._id, {
+        password: encryptedPassword,
+        status: "CHANGED_PASSWORD",
+      });
+
       // Create token
       const token = jwt.sign(
         { user_id: user._id, email },
@@ -236,10 +310,9 @@ app.post("/login", async (req, res) => {
       // save user token
       user.token = token;
       user.password = undefined;
-
       res.status(200).json(user);
     }
-    res.status(400).send("Invalid Credentials");
+    res.status(400).send("Tài khoản không tồn tại");
   } catch (err) {
     console.log(err);
   }
@@ -280,11 +353,11 @@ app.get("/sendEmail", auth, (req, res) => {
 });
 
 app.post("/upload", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id, images } = req.body;
-    console.log("==== req.body", req.body);
+    // console.log("==== req.body", req.body);
 
     // let product = null;
     upload(req, res, async function (err) {
@@ -323,7 +396,7 @@ app.post("/upload", auth, async (req, res) => {
 
 //=== User ===
 app.post("/user/list", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -354,7 +427,7 @@ app.post("/user/list", auth, async (req, res) => {
 });
 
 app.get("/user/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -387,7 +460,7 @@ app.get("/user/:id", auth, async (req, res) => {
 });
 
 app.post("/user/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -409,27 +482,17 @@ app.post("/user/add", auth, async (req, res) => {
       ...req.body,
       password: encryptedPassword,
     };
-
-    console.log("==== /user/add password", password);
-    // return;
-
-    console.log("==== /user/add userData", userData);
     // Create user in our database
     let user = await User.create(req.body);
-    console.log("==== /user/add user", user);
 
-    // user = await User.findOne({ _id: user._id });
-    // .populate("categories")
-    // .exec();
-
-    res.status(201).json(user);
+    res.status(200).json(user);
 
     sendEmail(
       {
-        title: "Invite Email",
-        content: `"Here's temporary password [ ${password} ]`,
+        title: "Đăng ký thành công",
+        content: `Đây là mật khẩu tạm thời của bạn [ ${password} ]`,
       },
-      "mr.nguyenquangduc@gmail.com"
+      email
     );
   } catch (err) {
     console.log(err);
@@ -437,11 +500,11 @@ app.post("/user/add", auth, async (req, res) => {
 });
 
 app.post("/user/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id, images } = req.body;
-    console.log("==== req.body", req.body);
+    // console.log("==== req.body", req.body);
 
     let user = await User.findOneAndUpdate(
       { _id },
@@ -473,21 +536,41 @@ app.get("/user/remove/:id", auth, async (req, res) => {
   }
 });
 //=== Category ===
-app.post("/category/list", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+app.post("/category/list", async (req, res) => {
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
     const {
       pagination: { limit, offset },
+      sort,
+      search,
     } = req.body;
+
+    const whereCondition = {};
+    if (search) {
+      for (const [key, value] of Object.entries(search)) {
+        whereCondition[key] = {
+          $options: "i",
+          $regex: value,
+        };
+        // console.log(`${key}: ${value}`);
+      }
+    }
 
     const categories = await Category.find()
       .limit(limit)
       .skip(limit * offset)
+      .where(whereCondition)
       .sort({
         name: "asc",
       })
+      .populate([
+        {
+          path: "parentId",
+          populate: ["category"],
+        },
+      ])
       .exec(function (err, categories) {
         Category.count().exec(function (err, count) {
           res.status(200).send({
@@ -511,7 +594,7 @@ app.post("/category/list", auth, async (req, res) => {
 });
 
 app.get("/category/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -532,11 +615,11 @@ app.get("/category/:id", auth, async (req, res) => {
 });
 
 app.post("/category/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
-    const { name, slug, description } = req.body;
+    const { slug } = req.body;
 
     // Validate if user exist in our database
     const oldCategory = await Category.findOne({ slug });
@@ -556,11 +639,18 @@ app.post("/category/add", auth, async (req, res) => {
 });
 
 app.post("/category/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
-    const { _id } = req.body;
-    console.log("==== /category/update");
+    const { _id, slug } = req.body;
+    // console.log("==== /category/update");
+
+    // // Validate if user exist in our database
+    const oldCategory = await Category.findOne({ slug });
+    if (oldCategory && oldCategory.slug !== slug) {
+      return res.status(409).send("Category Already Exist.");
+    }
+
     const category = await Category.findOneAndUpdate(
       { _id },
       {
@@ -580,7 +670,7 @@ app.get("/category/remove/:id", auth, async (req, res) => {
     const _id = req.params.id;
     // const { name, slug, description } = req.body;
     const category = await Category.findOneAndDelete({ _id });
-    console.log("==== /category/remove/:id category", category);
+    // console.log("==== /category/remove/:id category", category);
     res.status(200).json(category);
   } catch (err) {
     console.log(err);
@@ -588,53 +678,126 @@ app.get("/category/remove/:id", auth, async (req, res) => {
 });
 //=== Product ===
 app.post("/product/list", async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
     const {
       pagination: { limit, offset },
-      sort, search,
+      sort,
+      search,
     } = req.body;
 
-    const whereCondition = {};
+    let whereCondition = undefined;
     if (search) {
+      // const $and = []
       for (const [key, value] of Object.entries(search)) {
-        whereCondition[key] = {
-          $options: 'i',
-          $regex: value,
-        }
+        // switch (key) {
+        //   case "brand":
+        //   case "categories":
+        //     whereCondition[key] = value;
+        //     break;
+
+        //   default:
+        //     break;
+        // }
+        // whereCondition[key] = {
+        //   $options: 'i',
+        //   $regex: value,
+        // }
         // console.log(`${key}: ${value}`);
+        // const $regex = escapeStringRegexp('value');
+        // var id = mongoose.Types.ObjectId('4edd40c86762e0fb12000003');
+        if (value) {
+          let $or;
+          let $in;
+          if (!whereCondition) whereCondition = [];
+          const filterData = value.map((item) =>
+            key === "brand" ? new ObjectId(item) : item
+          );
+
+          // const filterData = value.map(item => { return { [`${key}`]: new ObjectId(item) }})
+          console.log("==== /product/list filterData", filterData);
+
+          $or = filterData;
+          $in = filterData;
+          // whereCondition[key] = value.join("|");
+          // const data = value
+          //   ?.map((item) => mongoose.Types.ObjectId(item))
+          //   .join("|");
+          // whereCondition[key] = {
+          //   // $options: 'i',
+          //   $regex: `/${data}/i`,
+          // };
+          console.log("==== /product/list $or", $or);
+
+          // whereCondition.push({ $or })
+          whereCondition.push({ [`${key}`]: { $in } });
+        }
       }
     }
 
+    // console.log("==== /product/list", req.body);
+    console.log("==== /product/list whereCondition", whereCondition);
 
-    await Product.find()
+    await Product
+      // .find()
+      .find(whereCondition ? { $and: whereCondition } : undefined)
+      // .and(whereCondition ? whereCondition : undefined)
       .limit(limit)
       .skip(offset)
       .sort(sort)
-      .where(whereCondition)
-      // .populate(["brand", "categories"])
+      // .where(whereCondition)
+      // .populate("brand", {
+      //   _id: 1,
+      //   name: 1,
+      // })
+      // .populate(["categories", {
+      //   _id: 1,
+      //   name: 1,
+      // }])
       .populate([
         {
           path: "brand",
           populate: ["brand"],
         },
-        {
-          path: "categories",
-          populate: ["category"],
-        },
+        [
+          {
+            path: "categories",
+            populate: ["category"],
+          },
+        ],
       ])
       .exec(function (err, products) {
-        Product.countDocuments(search).exec(function (err, count) {
+        // console.log("==== /product/list products", products);
+
+        // if (whereCondition) {
+        //   products = products.filter(function (product) {
+        //     return (
+        //       whereCondition["brand"].includes(product.brand._id) &&
+        //       product.categories.filter(function (category) {
+        //         return whereCondition["categories"].includes(category._id);
+        //       })
+        //     );
+        //     // whereCondition['categories'].includes(product.brand._id)
+        //     // return product.email; // return only users with email matching 'type: "Gmail"' query
+        //   });
+        // }
+        // console.log("==== /product/list products 1111", products);
+
+        Product.countDocuments(
+          whereCondition ? { $and: whereCondition } : undefined
+        ).exec(function (err, count) {
           res.status(200).send({
-            data: products,
+            data: products || [],
             pagination: {
+              // totalCount: count,
+              // offset: offset,
+              // hasPreviousPage: offset * limit > 0,
+              // hasNextPage: offset * limit <= count,
+              // count: limit,
               totalCount: count,
-              offset: offset,
-              hasPreviousPage: offset * limit > 0,
-              hasNextPage: offset * limit <= count,
-              count: limit,
+              currentPage: offset,
             },
           });
         });
@@ -646,7 +809,7 @@ app.post("/product/list", async (req, res) => {
 
 // app.get("/product/:category/:id", auth, async (req, res) => {
 app.get("/product/:id", async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -680,7 +843,7 @@ app.get("/product/:id", async (req, res) => {
 });
 
 app.post("/product/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -707,11 +870,11 @@ app.post("/product/add", auth, async (req, res) => {
 });
 
 app.post("/product/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id, images } = req.body;
-    console.log("==== req.body", req.body);
+    console.log("==== /product/update req.body", req.body);
 
     let product = await Product.findOneAndUpdate(
       { _id },
@@ -744,7 +907,7 @@ app.get("/product/remove/:id", auth, async (req, res) => {
 });
 //=== Order ===
 app.post("/order/list", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // console.log('===== login req', req);
@@ -789,7 +952,7 @@ app.post("/order/list", auth, async (req, res) => {
 });
 
 app.get("/order/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -801,7 +964,7 @@ app.get("/order/:id", auth, async (req, res) => {
       .populate([
         {
           path: "orderItems",
-          populate: ["order_item"],
+          populate: { path: "product" },
         },
         {
           path: "customer",
@@ -820,23 +983,11 @@ app.get("/order/:id", auth, async (req, res) => {
   }
 });
 
-app.post("/order/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
-
+app.post("/order/add", async (req, res) => {
   try {
     // Get user input
     const { customer, orderItems } = req.body;
-
-    // // // Validate if user exist in our database
-    // const oldItem = await Order.findOne({ sku });
-
-    // if (oldItem) {
-    //   return res.status(409).send("Product Already Exist.");
-    // }
-
     const id = crypto.randomBytes(5).toString("hex");
-    // console.log('==== id', id)
-
     let order = await Order.findOne({ orderNumber: id });
 
     if (order) {
@@ -867,14 +1018,22 @@ app.post("/order/add", auth, async (req, res) => {
       ])
       .exec();
 
-    res.status(201).json(order);
+    sendEmail(
+      {
+        title: "Đặt hàng thành công",
+        content: `"Đây là mã đơn hàng của bạn [ ${id} ]`,
+      },
+      customerData.email
+    );
+
+    res.status(200).json(order);
   } catch (err) {
     console.log(err);
   }
 });
 
 app.post("/order/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { orderNumber } = req.body;
@@ -901,6 +1060,7 @@ app.post("/order/update", auth, async (req, res) => {
 app.get("/order/remove/:id", auth, async (req, res) => {
   try {
     const orderNumber = req.params.id;
+    console.log("==== /order/remove/:id orderNumber", orderNumber);
     const order = await Order.findOneAndDelete({ orderNumber });
 
     res.status(200).json(order);
@@ -1042,7 +1202,7 @@ app.get("/orderItem/remove/:id", auth, async (req, res) => {
 
 //=== Brand ===
 app.post("/brand/list", async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get brand input
@@ -1073,7 +1233,7 @@ app.post("/brand/list", async (req, res) => {
 });
 
 app.get("/brand/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1094,7 +1254,7 @@ app.get("/brand/:id", auth, async (req, res) => {
 });
 
 app.post("/brand/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1118,7 +1278,7 @@ app.post("/brand/add", auth, async (req, res) => {
 });
 
 app.post("/brand/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id } = req.body;
@@ -1150,8 +1310,8 @@ app.get("/brand/remove/:id", auth, async (req, res) => {
 });
 
 //=== Advertisement ===
-app.post("/advertisement/list", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+app.post("/advertisement/list", async (req, res) => {
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get advertisement input
@@ -1182,7 +1342,7 @@ app.post("/advertisement/list", auth, async (req, res) => {
 });
 
 app.get("/advertisement/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1203,7 +1363,7 @@ app.get("/advertisement/:id", auth, async (req, res) => {
 });
 
 app.post("/advertisement/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1227,7 +1387,7 @@ app.post("/advertisement/add", auth, async (req, res) => {
 });
 
 app.post("/advertisement/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id } = req.body;
@@ -1259,7 +1419,7 @@ app.get("/advertisement/remove/:id", auth, async (req, res) => {
 
 //=== Email Template ===
 app.post("/email-template/list", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get brand input
@@ -1290,7 +1450,7 @@ app.post("/email-template/list", auth, async (req, res) => {
 });
 
 app.get("/email-template/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1311,7 +1471,7 @@ app.get("/email-template/:id", auth, async (req, res) => {
 });
 
 app.post("/email-template/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1335,7 +1495,7 @@ app.post("/email-template/add", auth, async (req, res) => {
 });
 
 app.post("/email-template/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id } = req.body;
@@ -1366,7 +1526,7 @@ app.get("/email-template/remove/:id", auth, async (req, res) => {
 
 //=== Popup Menu ===
 app.post("/popup-menu/list", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get brand input
@@ -1397,7 +1557,7 @@ app.post("/popup-menu/list", auth, async (req, res) => {
 });
 
 app.get("/popup-menu/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1418,7 +1578,7 @@ app.get("/popup-menu/:id", auth, async (req, res) => {
 });
 
 app.post("/popup-menu/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1442,7 +1602,7 @@ app.post("/popup-menu/add", auth, async (req, res) => {
 });
 
 app.post("/popup-menu/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id } = req.body;
@@ -1473,7 +1633,7 @@ app.get("/popup-menu/remove/:id", auth, async (req, res) => {
 
 //=== Tag-seo ===
 app.post("/tag-seo/list", async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get brand input
@@ -1504,7 +1664,7 @@ app.post("/tag-seo/list", async (req, res) => {
 });
 
 app.get("/tag-seo/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1525,7 +1685,7 @@ app.get("/tag-seo/:id", auth, async (req, res) => {
 });
 
 app.post("/tag-seo/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1549,7 +1709,7 @@ app.post("/tag-seo/add", auth, async (req, res) => {
 });
 
 app.post("/tag-seo/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id } = req.body;
@@ -1580,7 +1740,7 @@ app.get("/tag-seo/remove/:id", auth, async (req, res) => {
 
 //=== Support ===
 app.post("/support/list", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get brand input
@@ -1611,7 +1771,7 @@ app.post("/support/list", auth, async (req, res) => {
 });
 
 app.get("/support/:id", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1632,7 +1792,7 @@ app.get("/support/:id", auth, async (req, res) => {
 });
 
 app.post("/support/add", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     // Get user input
@@ -1656,7 +1816,7 @@ app.post("/support/add", auth, async (req, res) => {
 });
 
 app.post("/support/update", auth, async (req, res) => {
-  res.set("Access-Control-Allow-Origin", "http://localhost:3000");
+  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
     const { _id } = req.body;

@@ -6,14 +6,16 @@ const productSchema = new mongoose.Schema({
   description: { type: String, default: null },
   summary: { type: String, default: null },
   specification: { type: String, default: null },
-  brand: { type: mongoose.Schema.ObjectId, ref: 'brand' },
+  brand: { type: mongoose.Schema.ObjectId, ref: 'brand', index: true, },
   sku: { type: String, default: null },
   images: { type: Array, default: [] },
-  categories: [{type: mongoose.Schema.ObjectId, ref: 'category'}],
+  categories: {type: Array, ref: 'category', index: true,},
   pricing: { type: Number, default: 0 },
+  type: { type: String, default: null },
   createdAt: {type: Date, default: Date.now},
   updatedAt: {type: Date, default: Date.now},
-}, { strict: false });
+});
+// }, { strict: false });
 
-productSchema.index({ slug: 1, sku: 1 }, { unique: true });
+// productSchema.index({ slug: 1, sku: 1 }, { unique: true });
 module.exports = mongoose.model("product", productSchema);
