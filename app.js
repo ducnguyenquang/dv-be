@@ -27,18 +27,6 @@ const whitelist = domainsFromEnv.split(",").map((item) => item.trim());
 const auth = require("./middleware/auth");
 
 const app = express();
-// app.use((_req, res, next) => {
-//   res.header('Access-Control-Allow-Origin', '*')
-//   res.header(
-//     'Access-Control-Allow-Methods',
-//     'GET, POST, DELETE, PUT, PATCH, OPTIONS',
-//   )
-//   res.header(
-//     'Access-Control-Allow-Headers',
-//     'Content-Type, api_key, Authorization, Referer',
-//   )
-//   next()
-// })
 
 function generatePassword() {
   var length = 8,
@@ -84,9 +72,6 @@ function sendEmail(emailTemplate, sendTo) {
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // console.log("==== origin", origin);
-    // console.log("==== whitelist", whitelist);
-
     const whitelist = [
       "http://localhost:4001",
       "http://localhost:8080",
@@ -100,6 +85,9 @@ const corsOptions = {
       "https://leddaiviet.com",
       "https://leddaiviet.com:8080",
       "https://leddaiviet.com:4001",
+      "http://leddaiviet.com",
+      "http://leddaiviet.com:8080",
+      "http://leddaiviet.com:4001",
       "chrome-extension://fhbjgbiflinjbdggehcddcbncdddomop",
     ];
 
@@ -112,14 +100,8 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200,
 };
+
 app.use(cors(corsOptions));
-// register all custom Middleware
-// app.use(cors({ optionsSuccessStatus: 200 }))
-// app.use(function(req, res, next) {
-//   res.header("Access-Control-Allow-Origin", "*"); // update to match the domain you will make the request from
-//   res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-//   next();
-// });
 
 app.get("/", function (req, res, next) {
   // Handle the get for this route
@@ -145,31 +127,6 @@ var storage = multer.diskStorage({
 // picture i.e. 10 MB. it is optional
 const maxSize = 1 * 1000 * 1000 * 10;
 
-// var upload = multer({
-//   storage: storage,
-//   limits: { fileSize: maxSize },
-//   fileFilter: function (req, file, cb) {
-//     console.log('==== file', file)
-
-//     // Set the filetypes, it is optional
-//     var filetypes = /jpeg|jpg|png/;
-//     var mimetype = filetypes.test(file.mimetype);
-
-//     var extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-
-//     if (mimetype && extname) {
-//       return cb(null, true);
-//     }
-
-//     cb(
-//       "Error: File upload only supports the " +
-//         "following filetypes - " +
-//         filetypes
-//     );
-//   },
-
-//   // mypic is the name of file attribute
-// }).single("mypic");
 
 const upload = multer({ dest: "uploads/" });
 
@@ -265,7 +222,7 @@ app.post("/login", async (req, res) => {
         user.temporaryToken = user.password;
       }
       user.password = undefined;
-      console.log('==== /login result', user)
+      console.log("==== /login result", user);
       res.status(200).json(user);
     }
     res.status(400).send("Tài khoản không tồn tại");
@@ -288,7 +245,7 @@ app.post("/changePassword", async (req, res) => {
     // console.log("==== email", email);
     // console.log("==== password", password);
     // console.log("==== user", user);
-    
+
     if (user && oldPassword === user.password) {
       //Encrypt user password
       const encryptedPassword = await bcrypt.hash(password, 10);
@@ -678,8 +635,6 @@ app.get("/category/remove/:id", auth, async (req, res) => {
 });
 //=== Product ===
 app.post("/product/list", async (req, res) => {
-  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
-
   try {
     // Get user input
     const {
@@ -690,72 +645,43 @@ app.post("/product/list", async (req, res) => {
 
     let whereCondition = undefined;
     if (search) {
-      // const $and = []
       for (const [key, value] of Object.entries(search)) {
-        // switch (key) {
-        //   case "brand":
-        //   case "categories":
-        //     whereCondition[key] = value;
-        //     break;
-
-        //   default:
-        //     break;
-        // }
-        // whereCondition[key] = {
-        //   $options: 'i',
-        //   $regex: value,
-        // }
-        // console.log(`${key}: ${value}`);
-        // const $regex = escapeStringRegexp('value');
-        // var id = mongoose.Types.ObjectId('4edd40c86762e0fb12000003');
         if (value) {
           let $or;
           let $in;
           if (!whereCondition) whereCondition = [];
           const filterData = value.map((item) =>
-            key === "brand" ? new ObjectId(item) : item
-          );
+            { 
+              let result = item;
+              switch (key) {
+                case "brand":
+                // case "categories":
+                  result = new ObjectId(result)
+                  break;
+                default:
+                  break;
+              }
+              // key === "brand" ? result = new ObjectId(item) : result = item;
+                // console.log('====whereCondition result', result);
 
-          // const filterData = value.map(item => { return { [`${key}`]: new ObjectId(item) }})
-          console.log("==== /product/list filterData", filterData);
+              return result;
+            }
+          );
 
           $or = filterData;
           $in = filterData;
-          // whereCondition[key] = value.join("|");
-          // const data = value
-          //   ?.map((item) => mongoose.Types.ObjectId(item))
-          //   .join("|");
-          // whereCondition[key] = {
-          //   // $options: 'i',
-          //   $regex: `/${data}/i`,
-          // };
-          console.log("==== /product/list $or", $or);
+          // console.log('====filterData', filterData);
 
           // whereCondition.push({ $or })
           whereCondition.push({ [`${key}`]: { $in } });
         }
       }
     }
-
-    // console.log("==== /product/list", req.body);
-    console.log("==== /product/list whereCondition", whereCondition);
-
-    await Product
-      // .find()
-      .find(whereCondition ? { $and: whereCondition } : undefined)
-      // .and(whereCondition ? whereCondition : undefined)
+    console.log('==== whereCondition', whereCondition);
+    await Product.find(whereCondition ? { $and: whereCondition } : undefined)
       .limit(limit)
       .skip(offset)
       .sort(sort)
-      // .where(whereCondition)
-      // .populate("brand", {
-      //   _id: 1,
-      //   name: 1,
-      // })
-      // .populate(["categories", {
-      //   _id: 1,
-      //   name: 1,
-      // }])
       .populate([
         {
           path: "brand",
@@ -769,22 +695,6 @@ app.post("/product/list", async (req, res) => {
         ],
       ])
       .exec(function (err, products) {
-        // console.log("==== /product/list products", products);
-
-        // if (whereCondition) {
-        //   products = products.filter(function (product) {
-        //     return (
-        //       whereCondition["brand"].includes(product.brand._id) &&
-        //       product.categories.filter(function (category) {
-        //         return whereCondition["categories"].includes(category._id);
-        //       })
-        //     );
-        //     // whereCondition['categories'].includes(product.brand._id)
-        //     // return product.email; // return only users with email matching 'type: "Gmail"' query
-        //   });
-        // }
-        // console.log("==== /product/list products 1111", products);
-
         Product.countDocuments(
           whereCondition ? { $and: whereCondition } : undefined
         ).exec(function (err, count) {
@@ -807,30 +717,25 @@ app.post("/product/list", async (req, res) => {
   }
 });
 
-// app.get("/product/:category/:id", auth, async (req, res) => {
 app.get("/product/:id", async (req, res) => {
-  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
-
   try {
-    // Get user input
-    // req.query.id === 'red'
     const slug = req.params.id;
-    // const category = req.params.category;
-    // req.query.id === 'red'
-
-    // console.log("==== req.params", req.params);
-    // const categoryData = await Category.findOne({ slug: category });
-    // console.log("==== categoryData", categoryData);
-
-    // const id = req.query.id
-    // console.log("==== slug", slug);
     const product = await Product.findOne({
       slug: encodeURIComponent(slug),
-      // categories: categoryData._id,
     })
-      .populate("categories")
+      .populate([
+        {
+          path: "brand",
+          populate: ["brand"],
+        },
+        [
+          {
+            path: "categories",
+            populate: ["category"],
+          },
+        ],
+      ])
       .exec();
-    // console.log("==== product", product);
 
     if (!product) {
       return res.status(404).send("Product not found");
@@ -843,8 +748,6 @@ app.get("/product/:id", async (req, res) => {
 });
 
 app.post("/product/add", auth, async (req, res) => {
-  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
-
   try {
     // Get user input
     const { slug } = req.body;
@@ -860,7 +763,18 @@ app.post("/product/add", auth, async (req, res) => {
     let product = await Product.create(req.body);
 
     product = await Product.findOne({ _id: product._id })
-      .populate("categories")
+      .populate([
+        {
+          path: "brand",
+          populate: ["brand"],
+        },
+        [
+          {
+            path: "categories",
+            populate: ["category"],
+          },
+        ],
+      ])
       .exec();
 
     res.status(200).json(product);
@@ -883,7 +797,18 @@ app.post("/product/update", auth, async (req, res) => {
         updatedAt: Date.now(),
       }
     )
-      .populate("categories")
+      .populate([
+        {
+          path: "brand",
+          populate: ["brand"],
+        },
+        [
+          {
+            path: "categories",
+            populate: ["category"],
+          },
+        ],
+      ])
       .exec();
 
     res.status(200).json(product);
@@ -1429,7 +1354,7 @@ app.post("/email-template/list", auth, async (req, res) => {
 
     const emailTemplate = await EmailTemplate.find()
       .limit(limit)
-      .skip(limit * offset)
+      .skip(offset)
       .sort({
         name: "asc",
       })
@@ -1642,8 +1567,8 @@ app.post("/tag-seo/list", async (req, res) => {
     } = req.body;
 
     const tagSeo = await TagSeo.find()
-      .limit(limit)
-      .skip(limit * offset)
+      // .limit(limit)
+      // .skip(limit * offset)
       .sort({
         name: "asc",
       })
@@ -1739,9 +1664,7 @@ app.get("/tag-seo/remove/:id", auth, async (req, res) => {
 });
 
 //=== Support ===
-app.post("/support/list", auth, async (req, res) => {
-  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
-
+app.post("/support/list", async (req, res) => {
   try {
     // Get brand input
     const {
@@ -1771,13 +1694,7 @@ app.post("/support/list", auth, async (req, res) => {
 });
 
 app.get("/support/:id", auth, async (req, res) => {
-  // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
-
   try {
-    // Get user input
-    // req.query.id === 'red'
-    // console.log("==== req", req);
-
     const id = req.params.id;
     const support = await Support.findOne({ _id: id });
 
@@ -1796,10 +1713,10 @@ app.post("/support/add", auth, async (req, res) => {
 
   try {
     // Get user input
-    const { name } = req.body;
+    const { name, phone, title } = req.body;
 
     // Validate if user exist in our database
-    const oldSupport = await Support.findOne({ name });
+    const oldSupport = await Support.findOne({ name, phone, title });
     if (oldSupport) {
       return res.status(409).send("support Already Exist.");
     }
