@@ -90,7 +90,7 @@ const corsOptions = {
       "http://leddaiviet.com:4001",
       "chrome-extension://fhbjgbiflinjbdggehcddcbncdddomop",
     ];
-
+    
     if (!origin || whitelist.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -105,6 +105,7 @@ app.use(cors(corsOptions));
 
 app.get("/", function (req, res, next) {
   // Handle the get for this route
+  console.log("==== / Daiviet index");
 });
 
 app.post("/", function (req, res, next) {
