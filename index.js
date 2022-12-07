@@ -1,4 +1,4 @@
-const http = require("http");
+const http = require("https");
 const app = require("./app");
 const server = http.createServer(app);
 const { API_PORT } = process.env;
