@@ -91,6 +91,8 @@ const corsOptions = {
       "chrome-extension://fhbjgbiflinjbdggehcddcbncdddomop",
     ];
     
+    console.log("==== corsOptions origin", origin);
+
     if (!origin || whitelist.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
