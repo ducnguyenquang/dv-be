@@ -91,7 +91,7 @@ const corsOptions = {
       "chrome-extension://fhbjgbiflinjbdggehcddcbncdddomop",
     ];
     
-    console.log("==== corsOptions origin", origin);
+    // console.log("==== corsOptions origin", origin);
 
     if (!origin || whitelist.indexOf(origin) !== -1) {
       callback(null, true);
@@ -648,35 +648,31 @@ app.post("/product/list", async (req, res) => {
 
     let whereCondition = undefined;
     if (search) {
+      console.log('==== /product/list search', search);
       for (const [key, value] of Object.entries(search)) {
         if (value) {
-          let $or;
-          let $in;
+          // let $or;
+          let $in, $regex;
           if (!whereCondition) whereCondition = [];
-          const filterData = value.map((item) =>
-            { 
-              let result = item;
-              switch (key) {
-                case "brand":
-                // case "categories":
-                  result = new ObjectId(result)
-                  break;
-                default:
-                  break;
-              }
-              // key === "brand" ? result = new ObjectId(item) : result = item;
-                // console.log('====whereCondition result', result);
 
-              return result;
-            }
-          );
-
-          $or = filterData;
-          $in = filterData;
-          // console.log('====filterData', filterData);
-
-          // whereCondition.push({ $or })
-          whereCondition.push({ [`${key}`]: { $in } });
+          let result = value;
+          switch (key) {
+            case "name":
+            case "slug":
+              result = '.*' + result + '.*'
+              $regex = result
+              whereCondition.push({ [`${key}`]: { $regex, $options: 'i' } });
+              break;
+            case "brand":
+              result = new ObjectId(result)
+              $in = result;
+              whereCondition.push({ [`${key}`]: { $in } });
+              break;
+            default:
+              $in = result;
+              whereCondition.push({ [`${key}`]: { $in } });
+              break;
+          }
         }
       }
     }
@@ -1464,7 +1460,7 @@ app.post("/popup-menu/list", auth, async (req, res) => {
 
     const menu = await PopupMenu.find()
       .limit(limit)
-      .skip(limit * offset)
+      .skip(offset)
       .sort({
         name: "asc",
       })

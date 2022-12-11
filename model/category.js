@@ -6,6 +6,7 @@ const categorySchema = new mongoose.Schema({
   description: { type: String, default: null },
   type: { type: String, default: null },
   parentId: { type: mongoose.Schema.ObjectId, default: null, ref: 'category' },
+  images: { type: Array, default: [] },
   createdAt: {type: Date, default: Date.now},
   updatedAt: {type: Date, default: Date.now},
 });
