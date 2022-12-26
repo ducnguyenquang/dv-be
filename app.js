@@ -90,7 +90,7 @@ const corsOptions = {
       "http://leddaiviet.com:4001",
       "chrome-extension://fhbjgbiflinjbdggehcddcbncdddomop",
     ];
-    
+
     // console.log("==== corsOptions origin", origin);
 
     if (!origin || whitelist.indexOf(origin) !== -1) {
@@ -129,7 +129,6 @@ var storage = multer.diskStorage({
 // Define the maximum size for uploading
 // picture i.e. 10 MB. it is optional
 const maxSize = 1 * 1000 * 1000 * 10;
-
 
 const upload = multer({ dest: "uploads/" });
 
@@ -507,24 +506,38 @@ app.post("/category/list", async (req, res) => {
       search,
     } = req.body;
 
-    const whereCondition = {};
+    let whereCondition = undefined;
     if (search) {
       for (const [key, value] of Object.entries(search)) {
-        whereCondition[key] = {
-          $options: "i",
-          $regex: value,
-        };
-        // console.log(`${key}: ${value}`);
+        if (value) {
+          // let $or;
+          let $in, $regex;
+          if (!whereCondition) whereCondition = [];
+
+          let result = value;
+          switch (key) {
+            case "name":
+            case "slug":
+              result = ".*" + result + ".*";
+              $regex = result;
+              whereCondition.push({ [`${key}`]: { $regex, $options: "i" } });
+              break;
+            default:
+              $in = result;
+              whereCondition.push({ [`${key}`]: { $in } });
+              break;
+          }
+        }
       }
     }
 
-    const categories = await Category.find()
+    const categories = await Category.find(
+      whereCondition ? { $and: whereCondition } : undefined
+    )
       .limit(limit)
-      .skip(limit * offset)
-      .where(whereCondition)
-      .sort({
-        name: "asc",
-      })
+      .skip(offset)
+      // .where(whereCondition)
+      .sort(sort)
       .populate([
         {
           path: "parentId",
@@ -532,9 +545,11 @@ app.post("/category/list", async (req, res) => {
         },
       ])
       .exec(function (err, categories) {
-        Category.count().exec(function (err, count) {
+        Category.countDocuments(
+          whereCondition ? { $and: whereCondition } : undefined
+        ).exec(function (err, count) {
           res.status(200).send({
-            data: categories,
+            data: categories || [],
             pagination: {
               totalCount: count,
               currentPage: offset,
@@ -542,25 +557,15 @@ app.post("/category/list", async (req, res) => {
           });
         });
       });
-    // console.log("==== categories", categories);
-    // if (!categories) {
-    //   return res.status(404).send("Categories not found");
-    // }
-
-    // res.status(200).json(categories);
   } catch (err) {
     console.log(err);
   }
 });
 
-app.get("/category/:id", auth, async (req, res) => {
+app.get("/category/:id", async (req, res) => {
   // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
-    // Get user input
-    // req.query.id === 'red'
-    // console.log("==== req", req);
-
     const slug = req.params.id;
     const category = await Category.findOne({ slug });
 
@@ -647,8 +652,9 @@ app.post("/product/list", async (req, res) => {
     } = req.body;
 
     let whereCondition = undefined;
+    let wherePopulate = undefined;
     if (search) {
-      console.log('==== /product/list search', search);
+      console.log("==== /product/list search", search);
       for (const [key, value] of Object.entries(search)) {
         if (value) {
           // let $or;
@@ -659,25 +665,28 @@ app.post("/product/list", async (req, res) => {
           switch (key) {
             case "name":
             case "slug":
-              result = '.*' + result + '.*'
-              $regex = result
-              whereCondition.push({ [`${key}`]: { $regex, $options: 'i' } });
+              result = ".*" + result + ".*";
+              $regex = result;
+              whereCondition.push({ [`${key}`]: { $regex, $options: "i" } });
               break;
             case "brand":
-              result = new ObjectId(result)
+              result = new ObjectId(result);
               $in = result;
               whereCondition.push({ [`${key}`]: { $in } });
               break;
             default:
               $in = result;
               whereCondition.push({ [`${key}`]: { $in } });
+              wherePopulate = result;
               break;
           }
         }
       }
     }
-    console.log('==== whereCondition', whereCondition);
+    console.log("==== whereCondition", whereCondition);
+    console.log("==== wherePopulate", wherePopulate);
     await Product.find(whereCondition ? { $and: whereCondition } : undefined)
+      // await Product.find()
       .limit(limit)
       .skip(offset)
       .sort(sort)
@@ -689,11 +698,20 @@ app.post("/product/list", async (req, res) => {
         [
           {
             path: "categories",
-            populate: ["category"],
+            // populate: ["category"],
+            populate: { path: "category" },
           },
         ],
       ])
+      // .find(whereCondition ? { $and: whereCondition } : undefined)
       .exec(function (err, products) {
+        // console.log("==== products", products);
+
+        // products = products.filter((product) => {
+        //   return product.categories.filter(category => category.slug === wherePopulate.slug);
+        // });
+        // console.log("==== products 1", products.length);
+
         Product.countDocuments(
           whereCondition ? { $and: whereCondition } : undefined
         ).exec(function (err, count) {
@@ -1449,7 +1467,7 @@ app.get("/email-template/remove/:id", auth, async (req, res) => {
 });
 
 //=== Popup Menu ===
-app.post("/popup-menu/list", auth, async (req, res) => {
+app.post("/popup-menu/list", async (req, res) => {
   // res.set("Access-Control-Allow-Origin", "http://localhost:3000");
 
   try {
