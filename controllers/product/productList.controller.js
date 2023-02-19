@@ -1,8 +1,6 @@
 const Product = require("../../model/product");
 
 module.exports = async (req, res) => {
-  console.log('==== req.body', req.body);
-  console.log('==== req.params', req.params);
   try {
     const {
       pagination: { limit, offset },
@@ -14,7 +12,6 @@ module.exports = async (req, res) => {
     let wherePopulate = undefined;
     if (search) {
       for (const [key, value] of Object.entries(search)) {
-        if (value) {
           // let $or;
           let $in, $regex;
           if (!whereCondition) whereCondition = [];
@@ -32,17 +29,18 @@ module.exports = async (req, res) => {
               $in = result;
               whereCondition.push({ [`${key}`]: { $in } });
               break;
+            case "isHidden":
+              $in = result;
+              whereCondition.push({ [`${key}`]: { $in } });
+              break;
             default:
               $in = result;
               whereCondition.push({ [`${key}`]: { $in } });
               wherePopulate = result;
               break;
           }
-        }
       }
     }
-    console.log("==== whereCondition", whereCondition);
-    console.log("==== wherePopulate", wherePopulate);
     await Product.find(whereCondition ? { $and: whereCondition } : undefined)
       // await Product.find()
       .limit(limit)

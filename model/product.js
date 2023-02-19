@@ -12,6 +12,7 @@ const productSchema = new mongoose.Schema({
   categories: {type: Array, ref: 'category', index: true,},
   pricing: { type: Number, default: 0 },
   type: { type: String, default: null },
+  isHidden: { type: Boolean, default: false },
   documents: { type: Array, default: [] },
   createdAt: {type: Date, default: Date.now},
   updatedAt: {type: Date, default: Date.now},
