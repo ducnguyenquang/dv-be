@@ -6,6 +6,7 @@ const projectSchema = new mongoose.Schema({
   description: { type: String, default: null },
   summary: { type: String, default: null },
   images: { type: Array, default: [] },
+  isHidden: { type: Boolean, default: false },
   createdAt: {type: Date, default: Date.now},
   updatedAt: {type: Date, default: Date.now},
 });

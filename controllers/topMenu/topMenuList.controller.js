@@ -5,9 +5,13 @@ module.exports = async (req, res) => {
     // Get brand input
     const {
       pagination: { limit, offset },
+      isHidden,
     } = req.body;
+    console.log('====topMenuList.controller req.body', req.body);
 
-    const menu = await TopMenu.find()
+    const whereCondition = isHidden ? [{ [`${'isHidden'}`]: { $in: isHidden } }] : undefined;
+    console.log('====topMenuList.controller whereCondition', whereCondition);
+    const menu = await TopMenu.find(whereCondition ? { $and: whereCondition } : undefined)
       .limit(limit)
       .skip(offset)
       .sort({

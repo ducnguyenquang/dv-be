@@ -9,7 +9,7 @@ module.exports = async (req, res) => {
     const { email } = req.body;
 
     // Validate if user exist in our database
-    const oldUser = await Product.findOne({ email });
+    const oldUser = await User.findOne({ email });
 
     if (oldUser) {
       return res.status(409).send("User Already Exist.");

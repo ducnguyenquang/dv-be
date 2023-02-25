@@ -1,22 +1,22 @@
-const Project = require("../../model/project");
+const Common = require("../../model/common");
 
 module.exports = async (req, res) => {
   try {
     // Get brand input
     const {
       pagination: { limit, offset },
-      isHidden = false,
+      type,
+      group
     } = req.body;
 
-    const whereCondition = [{ [`${'isHidden'}`]: { $in: isHidden } }];
-    const menu = await Project.find(whereCondition ? { $and: whereCondition } : undefined)
+    const menu = await Common.find({ type, group })
       .limit(limit)
       .skip(offset)
       .sort({
         name: "asc",
       })
       .exec(function (err, menu) {
-        Project.count().exec(function (err, count) {
+        Common.count().exec(function (err, count) {
           res.status(200).send({
             data: menu,
             pagination: {

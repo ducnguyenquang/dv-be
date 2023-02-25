@@ -7,6 +7,7 @@ module.exports = async (req, res) => {
 
     // Validate if user exist in our database
     const oldMenu = await TopMenu.findOne({ name });
+    console.log('==== topMenuAdd.controller req.body', req.body);
     if (oldMenu) {
       return res.status(409).send("Menu Already Exist.");
     }
